@@ -42,6 +42,269 @@ def setup_environment(openai_api_key: str):
 
 # [在這裡插入所有的類定義：SmartChunkingStrategy, ChromaMixedArchitectureFixed, HybridSearchStrategy, PromptGeneratorRAGSystem]
 
+class PromptGeneratorRAGSystem:
+    def __init__(self):
+        """初始化 RAG 系統"""
+        try:
+            # 初始化 Chroma 客戶端
+            self.chroma_client = chromadb.Client()
+            
+            # 創建或獲取 collection
+            self.collection = self.chroma_client.get_or_create_collection(
+                name="prompts",
+                embedding_function=embedding_functions.OpenAIEmbeddingFunction(
+                    api_key=os.getenv("OPENAI_API_KEY"),
+                    model_name="text-embedding-ada-002"
+                )
+            )
+            
+            # 初始化系統狀態
+            self._initialize_system()
+            
+        except Exception as e:
+            raise Exception(f"RAG 系統初始化失敗：{str(e)}")
+    
+    def _initialize_system(self):
+        """初始化系統狀態"""
+        try:
+            # 檢查數據集是否已載入
+            if self.collection.count() == 0:
+                self.process_dataset()
+        except Exception as e:
+            raise Exception(f"系統狀態初始化失敗：{str(e)}")
+    
+    def process_dataset(self):
+        """處理並載入數據集到 Chroma"""
+        try:
+            # 讀取數據集
+            df = pd.read_csv("dataset/processed_dataset.csv")
+            
+            # 準備數據
+            documents = df["prompt_text"].tolist()
+            metadatas = df[["prompt_type", "complexity"]].to_dict('records')
+            ids = [str(uuid.uuid4()) for _ in range(len(df))]
+            
+            # 批量添加到 collection
+            self.collection.add(
+                documents=documents,
+                metadatas=metadatas,
+                ids=ids
+            )
+            
+            print(f"成功載入 {len(documents)} 條數據到 Chroma")
+            return True
+            
+        except Exception as e:
+            print(f"數據集處理錯誤：{str(e)}")
+            return False
+    
+    def apply_user_filter(self, query: str, filters: Dict[str, Any]) -> Dict[str, Any]:
+        """執行過濾搜索
+        
+        Args:
+            query: 用戶搜索查詢
+            filters: 過濾條件，包含 prompt_type 和 complexity
+            
+        Returns:
+            搜索結果字典
+        """
+        try:
+            # 構建查詢條件
+            where_clause = {}
+            if "prompt_type" in filters and filters["prompt_type"]:
+                where_clause["prompt_type"] = filters["prompt_type"]
+            if "complexity" in filters and filters["complexity"]:
+                where_clause["complexity"] = filters["complexity"]
+            
+            # 執行向量搜索
+            results = self.collection.query(
+                query_texts=[query],
+                n_results=10,
+                where=where_clause if where_clause else None
+            )
+            
+            # 格式化結果
+            formatted_results = []
+            if results['ids'] and len(results['ids'][0]) > 0:
+                for i in range(len(results['ids'][0])):
+                    formatted_results.append({
+                        "text": results['documents'][0][i],
+                        "score": float(results['distances'][0][i]),
+                        "metadata": {
+                            "prompt_type": results['metadatas'][0][i].get('prompt_type'),
+                            "complexity": results['metadatas'][0][i].get('complexity')
+                        }
+                    })
+            
+            return {
+                "total_found": len(formatted_results),
+                "results": formatted_results
+            }
+            
+        except Exception as e:
+            print(f"搜索錯誤：{str(e)}")
+            return {
+                "total_found": 0,
+                "results": [],
+                "error": str(e)
+            }
+    
+    def query(self, user_query: str, context: Optional[str] = None) -> Dict[str, Any]:
+        """處理用戶查詢
+        
+        Args:
+            user_query: 用戶查詢
+            context: 可選的上下文內容
+            
+        Returns:
+            查詢結果字典
+        """
+        try:
+            # 根據是否有上下文選擇不同的處理邏輯
+            if context:
+                return self._handle_context_query(user_query, context)
+            else:
+                return self._handle_no_context_query(user_query)
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def _handle_context_query(self, query: str, context: str) -> Dict[str, Any]:
+        """處理有上下文的查詢"""
+        try:
+            # 使用上下文和查詢進行搜索
+            results = self.collection.query(
+                query_texts=[f"{query} {context}"],
+                n_results=3
+            )
+            
+            if not results['ids'] or len(results['ids'][0]) == 0:
+                return {
+                    "scenario": "context",
+                    "response_mode": "customization",
+                    "error": "未找到相關結果"
+                }
+            
+            # 返回客製化結果
+            return {
+                "scenario": "context",
+                "response_mode": "customization",
+                "formatted_response": {
+                    "customized_prompt": self._generate_custom_prompt(query, context, results),
+                    "context_analysis": self._analyze_context(context),
+                    "source_prompts": [
+                        {
+                            "score": float(results['distances'][0][i]),
+                            "prompt_type": results['metadatas'][0][i].get('prompt_type'),
+                            "complexity": results['metadatas'][0][i].get('complexity'),
+                            "original_text": results['documents'][0][i]
+                        }
+                        for i in range(len(results['ids'][0]))
+                    ]
+                }
+            }
+        except Exception as e:
+            return {
+                "scenario": "context",
+                "response_mode": "customization",
+                "error": str(e)
+            }
+    
+    def _handle_no_context_query(self, query: str) -> Dict[str, Any]:
+        """處理無上下文的查詢"""
+        try:
+            # 執行基本搜索
+            results = self.collection.query(
+                query_texts=[query],
+                n_results=5
+            )
+            
+            if not results['ids'] or len(results['ids'][0]) == 0:
+                return {
+                    "scenario": "no_context",
+                    "response_mode": "categorization",
+                    "error": "未找到相關結果"
+                }
+            
+            # 對結果進行分類
+            categories = self._categorize_results(results)
+            
+            return {
+                "scenario": "no_context",
+                "response_mode": "categorization",
+                "formatted_response": {
+                    "categories": categories,
+                    "filter_suggestions": self._generate_filter_suggestions(results)
+                }
+            }
+        except Exception as e:
+            return {
+                "scenario": "no_context",
+                "response_mode": "categorization",
+                "error": str(e)
+            }
+    
+    def _generate_custom_prompt(self, query: str, context: str, results: Dict) -> str:
+        """生成客製化 prompt"""
+        # 使用最相關的 prompt 作為模板
+        template = results['documents'][0][0]
+        return template.replace("[Context Placeholder]", context)
+    
+    def _analyze_context(self, context: str) -> Dict[str, Any]:
+        """分析上下文內容"""
+        return {
+            "content_type": "user_input",
+            "length": len(context),
+            "summary": context[:200] + "..." if len(context) > 200 else context
+        }
+    
+    def _categorize_results(self, results: Dict) -> Dict[str, Any]:
+        """將搜索結果分類"""
+        categories = {}
+        
+        for i in range(len(results['ids'][0])):
+            prompt_type = results['metadatas'][0][i].get('prompt_type', 'Other')
+            
+            if prompt_type not in categories:
+                categories[prompt_type] = {
+                    "prompt_type": prompt_type,
+                    "count": 0,
+                    "prompts": []
+                }
+            
+            categories[prompt_type]["count"] += 1
+            categories[prompt_type]["prompts"].append({
+                "text": results['documents'][0][i],
+                "score": float(results['distances'][0][i]),
+                "complexity": results['metadatas'][0][i].get('complexity', 'medium')
+            })
+        
+        return categories
+    
+    def _generate_filter_suggestions(self, results: Dict) -> List[Dict[str, Any]]:
+        """生成過濾建議"""
+        suggestions = []
+        prompt_types = {}
+        complexities = {}
+        
+        for i in range(len(results['ids'][0])):
+            prompt_type = results['metadatas'][0][i].get('prompt_type')
+            complexity = results['metadatas'][0][i].get('complexity')
+            
+            if prompt_type:
+                prompt_types[prompt_type] = prompt_types.get(prompt_type, 0) + 1
+            if complexity:
+                complexities[complexity] = complexities.get(complexity, 0) + 1
+        
+        for prompt_type, count in prompt_types.items():
+            suggestions.append({
+                "filter_name": prompt_type,
+                "count": count,
+                "prompt_type": prompt_type,
+                "complexity_distribution": complexities
+            })
+        
+        return suggestions
+
 def main():
     """主函數 - 系統初始化和測試"""
     # 設置 API Key
@@ -80,7 +343,7 @@ def main():
     
     # 初始化檢索系統
     hybrid_search = HybridSearchStrategy(chroma_arch)
-    rag_system = PromptGeneratorRAGSystem(chroma_arch, hybrid_search)
+    rag_system = PromptGeneratorRAGSystem()
     
     print("🎉 系統初始化完成！")
     

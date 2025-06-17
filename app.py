@@ -256,18 +256,20 @@ class StreamlitRAGInterface:
                 return False
                 
             # 檢查數據集
-            dataset_path = os.path.join(env_status["dataset_dir"], "processed_dataset.csv")
-            if not os.path.exists(dataset_path):
+            if not os.path.exists("dataset/processed_dataset.csv"):
                 st.error("數據集文件不存在")
                 return False
                 
-            # 初始化 RAG 系統
+            # 初始化真實的 RAG 系統
             from source_code.prompt_rag_system import PromptGeneratorRAGSystem
             st.session_state.rag_system = PromptGeneratorRAGSystem()
             
             # 載入系統統計
             st.session_state.system_stats = self.load_system_stats()
             st.session_state.system_loaded = True
+            
+            # 顯示成功信息
+            st.success("系統載入成功！")
             
             return True
             
@@ -691,66 +693,39 @@ class StreamlitRAGInterface:
             self.execute_filtered_search(filter_query, selected_type, selected_complexity)
 
     def execute_filtered_search(self, query, prompt_type, complexity):
-        """執行過濾搜尋"""
-        with st.spinner("🔍 執行過濾搜尋中..."):
-            try:
-                # 檢查系統狀態
-                if not self.rag_system:
-                    self.rag_system = st.session_state.get('rag_system')
-                    if not self.rag_system:
-                        st.error("系統未正確載入，請先在左側面板點擊「載入系統」按鈕")
-                        return
+        """執行過濾搜索"""
+        try:
+            if not st.session_state.system_loaded:
+                st.error("請先載入系統")
+                return
                 
-                # 構建過濾條件
-                filters = {}
-                if prompt_type != "全部":
-                    filters["prompt_type"] = prompt_type
-                if complexity != "全部":
-                    filters["complexity"] = complexity
+            filters = {}
+            if prompt_type != "全部":
+                filters["prompt_type"] = prompt_type
+            if complexity != "全部":
+                filters["complexity"] = complexity
                 
-                # 模擬API調用延遲
-                time.sleep(1)
+            results = st.session_state.rag_system.apply_user_filter(query, filters)
+            
+            if "error" in results:
+                st.error(f"搜索錯誤：{results['error']}")
+                return
                 
-                # 執行過濾搜尋
-                result = self.rag_system.apply_user_filter(query, filters)
+            if results["total_found"] == 0:
+                st.warning("未找到符合條件的結果")
+                return
                 
-                if "error" in result:
-                    st.error(f"過濾搜尋失敗：{result['error']}")
-                    return
-                
-                # 顯示結果
-                st.success(f"🎉 找到 {result['total_found']} 個匹配結果")
-                
-                if result['results']:
-                    st.markdown("### 📋 過濾結果")
+            # 顯示結果
+            st.markdown(f"🔍 找到 {results['total_found']} 個匹配結果")
+            
+            for result in results["results"]:
+                with st.expander(f"相似度: {result['score']:.3f}"):
+                    st.markdown(f"**類型**: {result['metadata']['prompt_type']}")
+                    st.markdown(f"**複雜度**: {result['metadata']['complexity']}")
+                    st.text_area("Prompt 內容", result["text"], height=100)
                     
-                    for i, item in enumerate(result['results'], 1):
-                        unique_key = f"filter_copy_{i}"
-                        with st.expander(f"結果 {i} (相似度: {item['score']:.3f})"):
-                            metadata = item['metadata']
-                            
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.write(f"**類型**: {metadata.get('prompt_type', 'N/A')}")
-                            with col2:
-                                st.write(f"**複雜度**: {metadata.get('complexity', 'N/A')}")
-                            with col3:
-                                st.write(f"**相似度**: {item['score']:.3f}")
-                            
-                            st.markdown(f"""
-                            <div class="prompt-preview">
-                                {item['text'].replace('<', '&lt;').replace('>', '&gt;')[:400]}{'...' if len(item['text']) > 400 else ''}
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            if st.button(f"📋 複製結果 {i}", key=unique_key):
-                                st.code(item['text'], language="text")
-                                st.success("Prompt 已複製到剪貼簿！")
-                else:
-                    st.info("未找到符合條件的結果，請嘗試調整過濾條件")
-                    
-            except Exception as e:
-                st.error(f"過濾搜尋過程中發生錯誤：{str(e)}")
+        except Exception as e:
+            st.error(f"執行搜索時發生錯誤：{str(e)}")
     
     def render_system_analysis(self):
         """渲染系統分析界面"""
@@ -859,4 +834,55 @@ class StreamlitRAGInterface:
 
         with st.expander("🚀 快速入門", expanded=True):
             st.markdown("""
-            1.  **載入系統**: 點擊左側邊欄的 `🔄 載入系統`
+            1. **載入系統**: 點擊左側邊欄的 `🔄 載入系統` 按鈕。
+            2. **前往智能搜尋**: 系統載入後，停留在 `🔍 智能搜尋` 標籤頁。
+            3. **輸入需求**: 在輸入框中描述您想要的任務，例如「寫一封道歉信」或「解釋 Python 的 aiohttp 庫」。
+            4. **提供上下文 (可選)**: 如果您的任務需要基於特定內容（如一封待回覆的郵件），請將其貼入「上下文內容」區域。
+            5. **開始搜尋**: 點擊 `🚀 開始搜尋` 按鈕。
+            6. **查看結果**: 系統會自動分析您的需求，並提供分類的 prompt 建議或一個為您量身打造的客製化 prompt。
+            """)
+
+        with st.expander("🔍 智能搜尋詳解"):
+            st.markdown("""
+            **智能搜尋** 是本系統的核心功能，它能理解您的意圖並提供最相關的結果。
+
+            - **無上下文搜尋**:
+                - **適用場景**: 當您有一個通用的想法，想尋找高品質的 prompt 模板時。
+                - **例如**: 「創意寫作點子」、「總結文章的 prompt」。
+                - **結果**: 系統會返回多個相關的 **分類**，每個分類下包含多個 prompt 範例，您可以從中挑選。
+
+            - **有上下文搜尋**:
+                - **適用場景**: 當您需要處理一段具體文本時。
+                - **例如**: 將一封客戶投訴郵件貼入上下文，並在需求中輸入「幫我草擬一封專業的回覆」。
+                - **結果**: 系統會分析您的上下文，並結合您的需求，生成一個 **獨一無二的、客製化的 prompt**。
+
+            - **自動檢測模式**:
+                - 這是**推薦模式**。您無需關心要選哪種模式。
+                - 系統會自動檢查「上下文內容」區域是否為空。
+            """)
+
+        with st.expander("🎯 進階過濾檢索"):
+            st.markdown("""
+            當您對所需的 prompt 有非常具體的要求時，可以使用此功能。
+
+            - **Prompt 類型**: 篩選特定用途的 prompt，例如 `PROGRAMMING_CODE_GENERATION` 只會顯示與程式碼生成相關的 prompt。
+            - **複雜度**: 篩選 prompt 的複雜程度。
+                - `low`: 簡單、直接的指令。
+                - `medium`: 包含多個步驟或一些限制條件。
+                - `high`: 複雜的、專家級的 prompt。
+            - **搜尋查詢 (可選)**: 在以上過濾條件的基礎上，再進行關鍵詞搜尋。
+            """)
+
+        with st.expander("📋 解讀搜尋結果"):
+            st.markdown("""
+            - **檢測場景**: 系統判斷您的搜尋是 `no_context` (無上下文) 還是 `context` (有上下文)。
+            - **處理模式**: 系統採用的內部處理策略。
+            - **分類結果 (無上下文)**:
+                - `分類`: 根據您的需求找到的相關 prompt 類別。
+                - `Prompt 預覽`: 點擊展開可看到完整的 prompt 文本和其複雜度、相似度等信息。
+            - **客製化結果 (有上下文)**:
+                - `客製化 Prompt`: 這是系統為您量身打造的最終 prompt。
+                - `上下文分析`: 系統對您提供的上下文的理解。
+                - `源 Prompt`: 系統在生成客製化 prompt 時參考的基礎模板。
+            - **相似度 (Score)**: 代表檢索到的 prompt 與您的查詢有多相關，分數越高越相關。
+            """)

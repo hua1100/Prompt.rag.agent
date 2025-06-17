@@ -865,6 +865,10 @@ if __name__ == "__main__":
         "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
     
+    # 設置為全局變數
+    globals()['rag_system'] = rag_system
+    globals()['system_stats'] = system_stats
+    
     # 實例化並運行界面
     app = StreamlitRAGInterface()
     app.run()

@@ -107,6 +107,56 @@ st.markdown("""
         background-color: #1a202c;
         color: #e2e8f0;
     }
+    
+    /* 源 Prompt 顯示樣式 */
+    .source-prompt {
+        background: #2d3748;
+        border: 1px solid #4a5568;
+        border-radius: 8px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        color: #e2e8f0;
+    }
+    
+    /* 確保所有文字在深色背景下可見 */
+    div[data-testid="stExpander"] {
+        background-color: #1a202c;
+        color: #e2e8f0;
+        border: 1px solid #4a5568;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+    }
+    
+    div[data-testid="stExpander"] > div {
+        color: #e2e8f0;
+    }
+    
+    /* 修改展開器的標題顏色 */
+    .streamlit-expanderHeader {
+        color: #e2e8f0 !important;
+        background-color: #2d3748 !important;
+    }
+    
+    /* 確保代碼塊文字顏色 */
+    code {
+        color: #e2e8f0 !important;
+        background-color: #2d3748 !important;
+    }
+    
+    /* 一般文字顏色 */
+    p, h1, h2, h3, h4, h5, h6, li, span {
+        color: #e2e8f0;
+    }
+    
+    /* 確保連結顏色可見 */
+    a {
+        color: #63b3ed !important;
+    }
+    
+    /* 表格文字顏色 */
+    .dataframe {
+        color: #e2e8f0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -499,14 +549,14 @@ class StreamlitRAGInterface:
             
             # 源 Prompt 信息
             if source_prompts:
-                st.markdown("### 📚 參考的源 Prompt")
-                st.write(f"本次客製化基於 {len(source_prompts)} 個高品質的源 prompt：")
+                st.markdown("### 📚 參考的來源 Prompt")
+                st.write(f"本次客製化基於 {len(source_prompts)} 個高品質的來源 prompt：")
                 
                 for i, source in enumerate(source_prompts, 1):
                     st.markdown(f"**源 Prompt {i} (相似度: {source['score']:.3f})**")
                     st.write(f"**類型**: {source['prompt_type']}, **複雜度**: {source['complexity']}, **技巧**: {source['techniques']}")
                     st.markdown(f"""
-                    <div class="prompt-preview" style="background: #e9ecef;">
+                    <div class="source-prompt">
                         {source['original_text'].replace('<', '&lt;').replace('>', '&gt;')[:300]}...
                     </div>
                     """, unsafe_allow_html=True)

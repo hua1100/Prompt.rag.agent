@@ -1,5 +1,5 @@
 # 系統配置文件
-CHROMA_PERSIST_DIR = "./chroma_db"
+CHROMA_PERSIST_DIR = "./chroma_database"
 MAX_TOKENS = 1024
 OPENAI_MODEL = "gpt-3.5-turbo"
 EMBEDDING_MODEL = "text-embedding-ada-002"

@@ -3,6 +3,8 @@ import pandas as pd
 from datetime import datetime
 import json
 import time
+import os
+import chromadb
 
 # 初始化全局變數
 if 'rag_system' not in st.session_state:
@@ -166,8 +168,6 @@ class StreamlitRAGInterface:
     """
     
     def __init__(self):
-        self.rag_system = None
-        self.system_stats = None
         self.initialize_session_state()
     
     def initialize_session_state(self):
@@ -181,33 +181,115 @@ class StreamlitRAGInterface:
         if 'selected_category' not in st.session_state:
             st.session_state.selected_category = None
     
-    def load_system(self):
-        """載入 RAG 系統"""
+    def check_system_status(self):
+        """檢查系統關鍵組件的狀態"""
+        status = {
+            "api_key": False,
+            "database": False,
+            "dataset": False
+        }
+        
+        # 檢查 OpenAI API Key
         try:
-            # 創建新的 RAG 系統實例
-            rag_system = MockRAGSystem()
-            system_stats = {
-                "collections": {
-                    "general_prompts": 1250,
-                    "code_prompts": 820,
-                    "creative_writing": 550,
-                    "business_communication": 680
-                },
-                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-            
-            # 保存到 session state
-            st.session_state['rag_system'] = rag_system
-            st.session_state['system_stats'] = system_stats
-            
-            # 設置實例變數
-            self.rag_system = rag_system
-            self.system_stats = system_stats
-            st.session_state.system_loaded = True
-            return True
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if api_key and len(api_key) > 20:  # 簡單的長度檢查
+                status["api_key"] = True
         except Exception as e:
-            st.error(f"載入系統失敗：{str(e)}")
+            st.error(f"API Key 檢查錯誤: {str(e)}")
+            
+        # 檢查 Chroma 數據庫
+        try:
+            if hasattr(st.session_state, 'rag_system'):
+                if not isinstance(st.session_state.rag_system, MockRAGSystem):
+                    # 檢查數據庫連接
+                    client = chromadb.Client()
+                    collections = client.list_collections()
+                    status["database"] = len(collections) > 0
+        except Exception as e:
+            st.error(f"數據庫檢查錯誤: {str(e)}")
+            
+        # 檢查數據集
+        try:
+            dataset_path = "dataset/processed_dataset.csv"
+            if os.path.exists(dataset_path):
+                df = pd.read_csv(dataset_path)
+                status["dataset"] = len(df) > 0
+        except Exception as e:
+            st.error(f"數據集檢查錯誤: {str(e)}")
+            
+        return status
+
+    def render_system_status(self):
+        """在側邊欄顯示系統狀態"""
+        st.sidebar.markdown("### 🔧 系統狀態")
+        status = self.check_system_status()
+        
+        # API Key 狀態
+        if status["api_key"]:
+            st.sidebar.success("✅ OpenAI API Key 已設置")
+        else:
+            st.sidebar.error("❌ OpenAI API Key 未設置或無效")
+            
+        # 數據庫狀態
+        if status["database"]:
+            st.sidebar.success("✅ Chroma 數據庫已初始化")
+        else:
+            st.sidebar.error("❌ Chroma 數據庫未初始化")
+            
+        # 數據集狀態
+        if status["dataset"]:
+            st.sidebar.success("✅ 數據集已載入")
+        else:
+            st.sidebar.error("❌ 數據集未載入")
+            
+        return status
+
+    def load_system(self):
+        """載入系統"""
+        try:
+            # 初始化環境
+            from source_code.config import initialize_environment
+            env_status = initialize_environment()
+            
+            if not env_status["api_key_set"]:
+                st.error("OpenAI API Key 未設置")
+                return False
+                
+            # 檢查數據集
+            dataset_path = os.path.join(env_status["dataset_dir"], "processed_dataset.csv")
+            if not os.path.exists(dataset_path):
+                st.error("數據集文件不存在")
+                return False
+                
+            # 初始化 RAG 系統
+            from source_code.prompt_rag_system import PromptGeneratorRAGSystem
+            st.session_state.rag_system = PromptGeneratorRAGSystem()
+            
+            # 載入系統統計
+            st.session_state.system_stats = self.load_system_stats()
+            st.session_state.system_loaded = True
+            
+            return True
+            
+        except Exception as e:
+            st.error(f"系統載入失敗：{str(e)}")
             return False
+            
+    def load_system_stats(self):
+        """載入系統統計信息"""
+        try:
+            if os.path.exists("dataset/processed_dataset.csv"):
+                df = pd.read_csv("dataset/processed_dataset.csv")
+                return {
+                    "collections": {
+                        "total_prompts": len(df),
+                        "by_type": df["prompt_type"].value_counts().to_dict()
+                    },
+                    "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+        except Exception as e:
+            st.error(f"統計信息載入失敗：{str(e)}")
+            return None
     
     def render_header(self):
         """渲染頁面標題"""
@@ -224,21 +306,14 @@ class StreamlitRAGInterface:
     def render_sidebar(self):
         """渲染側邊欄"""
         with st.sidebar:
-            st.markdown("## 🎛️ 系統控制台")
+            st.title("🤖 Prompt RAG")
             
-            # 系統狀態
-            if st.session_state.system_loaded:
-                st.markdown('<div class="sidebar-metric">✅ 系統已載入</div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="sidebar-metric">❌ 系統未載入</div>', unsafe_allow_html=True)
-                if st.button("🔄 載入系統", type="primary"):
-                    with st.spinner("載入系統中..."):
-                        if self.load_system():
-                            st.success("系統載入成功！")
-                            time.sleep(1) # 讓使用者看到成功訊息
-                            st.rerun()
-                        else:
-                            st.error("系統載入失敗，請確認系統已正確初始化")
+            # 顯示系統狀態
+            system_status = self.render_system_status()
+            
+            # 載入系統按鈕
+            if st.button("🔄 載入系統", use_container_width=True):
+                self.load_system()
             
             if st.session_state.system_loaded and self.system_stats:
                 st.markdown("## 📊 系統統計")
@@ -784,184 +859,4 @@ class StreamlitRAGInterface:
 
         with st.expander("🚀 快速入門", expanded=True):
             st.markdown("""
-            1.  **載入系統**: 點擊左側邊欄的 `🔄 載入系統` 按鈕。
-            2.  **前往智能搜尋**: 系統載入後，停留在 `🔍 智能搜尋` 標籤頁。
-            3.  **輸入需求**: 在輸入框中描述您想要的任務，例如「寫一封道歉信」或「解釋 Python 的 aiohttp 庫」。
-            4.  **提供上下文 (可選)**: 如果您的任務需要基於特定內容（如一封待回覆的郵件），請將其貼入「上下文內容」區域。
-            5.  **開始搜尋**: 點擊 `🚀 開始搜尋` 按鈕。
-            6.  **查看結果**: 系統會自動分析您的需求，並提供分類的 prompt 建議或一個為您量身打造的客製化 prompt。
-            """)
-
-        with st.expander("🔍 智能搜尋詳解"):
-            st.markdown("""
-            **智能搜尋** 是本系統的核心功能，它能理解您的意圖並提供最相關的結果。
-
-            -   **無上下文搜尋**:
-                -   **適用場景**: 當您有一個通用的想法，想尋找高品質的 prompt 模板時。
-                -   **例如**: 「創意寫作點子」、「總結文章的 prompt」。
-                -   **結果**: 系統會返回多個相關的 **分類**，每個分類下包含多個 prompt 範例，您可以從中挑選。
-
-            -   **有上下文搜尋**:
-                -   **適用場景**: 當您需要處理一段具體文本時。
-                -   **例如**: 將一封客戶投訴郵件貼入上下文，並在需求中輸入「幫我草擬一封專業的回覆」。
-                -   **結果**: 系統會分析您的上下文，並結合您的需求，生成一個 **獨一無二的、客製化的 prompt**。這個 prompt 會直接包含您的上下文信息，可以直接使用。
-
-            -   **自動檢測模式**:
-                -   這是**推薦模式**。您無需關心要選哪種模式。
-                -   系統會自動檢查「上下文內容」區域是否為空。如果有內容，則執行「有上下文搜尋」；如果沒有，則執行「無上下文搜尋」。
-            """)
-
-        with st.expander("🎯 進階過濾檢索"):
-            st.markdown("""
-            當您對所需的 prompt 有非常具體的要求時，可以使用此功能。
-
-            -   **Prompt 類型**: 篩選特定用途的 prompt，例如 `PROGRAMMING_CODE_GENERATION` 只會顯示與程式碼生成相關的 prompt。
-            -   **複雜度**: 篩選 prompt 的複雜程度。
-                -   `low`: 簡單、直接的指令。
-                -   `medium`: 包含多個步驟或一些限制條件。
-                -   `high`: 複雜的、專家級的 prompt，可能包含詳細的 Persona 設定、輸出格式要求等。
-            -   **搜尋查詢 (可選)**: 在以上過濾條件的基礎上，再進行關鍵詞搜尋，進一步縮小範圍。
-            """)
-
-        with st.expander("📋 解讀搜尋結果"):
-            st.markdown("""
-            -   **檢測場景**: 系統判斷您的搜尋是 `no_context` (無上下文) 還是 `context` (有上下文)。
-            -   **處理模式**: 系統採用的內部處理策略。
-            -   **分類結果 (無上下文)**:
-                -   `分類`: 根據您的需求找到的相關 prompt 類別。
-                -   `Prompt 預覽`: 點擊展開可看到完整的 prompt 文本和其複雜度、相似度等信息。
-            -   **客製化結果 (有上下文)**:
-                -   `客製化 Prompt`: 這是系統為您量身打造的最終 prompt，可以直接複製使用。
-                -   `上下文分析`: 系統對您提供的上下文的理解。
-                -   `源 Prompt`: 系統在生成客製化 prompt 時參考了哪些基礎 prompt 模板。
-            -   **相似度 (Score)**: 代表檢索到的 prompt 與您的查詢有多相關，分數越高越相關。
-            """)
-            
-    def run(self):
-        """運行 Streamlit 界面"""
-        self.render_header()
-        self.render_sidebar()
-        self.render_main_interface()
-
-# --- 模擬後端 (為了演示) ---
-# 在實際應用中，您會導入您真實的 RAG 系統類
-class MockRAGSystem:
-    def query(self, user_query, context=None):
-        if context:
-            # 模擬有上下文的回應
-            return {
-                "scenario": "context",
-                "response_mode": "customization",
-                "formatted_response": {
-                    "customized_prompt": f"""You are a helpful assistant. Based on the following context, please respond to the user's request.
-
-Context:
----
-{context[:200]}...
----
-
-User Request: {user_query}
-
-Please provide a comprehensive and helpful response. Structure your output clearly.""",
-                    "context_analysis": {
-                        "content_type": "customer_email",
-                        "length": len(context),
-                        "summary": "The context appears to be a user inquiry or feedback email."
-                    },
-                    "source_prompts": [
-                        {
-                            "score": 0.92,
-                            "prompt_type": "CONVERSATIONAL",
-                            "complexity": "medium",
-                            "techniques": "Role-playing, Context-injection",
-                            "original_text": "Act as a customer support agent. Given the user's email below, draft a polite and helpful response. [Context Placeholder]"
-                        }
-                    ],
-                    "expected_outputs": [
-                        "A professionally drafted email response addressing the user's points from the context."
-                    ],
-                    "confidence": "high"
-                }
-            }
-        else:
-            # 模擬無上下文的回應
-            return {
-                "scenario": "no_context",
-                "response_mode": "categorization",
-                "formatted_response": {
-                    "categories": {
-                        "Creative Writing Prompts": {
-                            "prompt_type": "CREATIVE_WRITING",
-                            "count": 2,
-                            "prompts": [
-                                {"text": "Write a short story about a time-traveling librarian. The story should be in the first person.", "score": 0.88, "complexity": "medium"},
-                                {"text": "Generate three ideas for a fantasy novel involving a forgotten magic.", "score": 0.85, "complexity": "low"}
-                            ]
-                        },
-                        "Code Generation Prompts": {
-                            "prompt_type": "PROGRAMMING_CODE_GENERATION",
-                            "count": 1,
-                            "prompts": [
-                                {"text": "Write a Python function that takes a list of integers and returns the second largest number. Include docstrings and type hints.", "score": 0.91, "complexity": "high"}
-                            ]
-                        }
-                    },
-                    "filter_suggestions": [
-                        {"filter_name": "Creative Writing", "count": 2, "prompt_type": "CREATIVE_WRITING", "complexity_distribution": {"low": 1, "medium": 1}, "sample_techniques": ["Storytelling", "Idea-generation"]}
-                    ]
-                }
-            }
-
-    def apply_user_filter(self, query, filters):
-        # 模擬過濾搜尋
-        results = [
-            {
-                "text": "This is a filtered prompt for 'CONVERSATIONAL' type with 'medium' complexity.",
-                "score": 0.95,
-                "metadata": {"prompt_type": "CONVERSATIONAL", "complexity": "medium"}
-            },
-            {
-                "text": "Another filtered prompt for 'CONVERSATIONAL' type, but with 'high' complexity.",
-                "score": 0.91,
-                "metadata": {"prompt_type": "CONVERSATIONAL", "complexity": "high"}
-            }
-        ]
-        
-        # 根據 filters 進行簡單過濾
-        filtered_results = []
-        for r in results:
-            match = True
-            if "prompt_type" in filters and filters["prompt_type"] != r["metadata"]["prompt_type"]:
-                match = False
-            if "complexity" in filters and filters["complexity"] != r["metadata"]["complexity"]:
-                match = False
-            if match:
-                filtered_results.append(r)
-        
-        return {
-            "total_found": len(filtered_results),
-            "results": filtered_results
-        }
-
-# --- 主執行區塊 ---
-if __name__ == "__main__":
-    # 創建模擬的全局變數，以供 load_system 方法使用
-    # 在您的真實應用中，這裡會是您 RAG 系統的實例化過程
-    rag_system = MockRAGSystem()
-    system_stats = {
-        "collections": {
-            "general_prompts": 1250,
-            "code_prompts": 820,
-            "creative_writing": 550,
-            "business_communication": 680
-        },
-        "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    
-    # 設置為全局變數
-    globals()['rag_system'] = rag_system
-    globals()['system_stats'] = system_stats
-    
-    # 實例化並運行界面
-    app = StreamlitRAGInterface()
-    app.run()
+            1.  **載入系統**: 點擊左側邊欄的 `🔄 載入系統`

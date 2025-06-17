@@ -1,0 +1,47 @@
+{
+  "system_info": {
+    "creation_date": "2025-06-17T04:13:59.630969",
+    "total_records": 1450,
+    "total_chunks": 2989,
+    "validation_results": {
+      "total_chunks": 2989,
+      "token_violations": 61,
+      "empty_chunks": 0,
+      "missing_metadata": 0,
+      "valid_chunks": 2928
+    },
+    "system_stats": {
+      "collections": {
+        "prompt_contexts": 1450,
+        "prompt_examples": 1828,
+        "expected_outputs": 580
+      },
+      "total_documents": 3858,
+      "supported_scenarios": [
+        "no_context",
+        "has_context"
+      ],
+      "system_status": "operational"
+    }
+  },
+  "chunking_config": {
+    "max_tokens": 1024,
+    "strategy": "smart_hybrid_chunking",
+    "boundary_priorities": [
+      "\\n\\n",
+      "\\n# ",
+      "\\n## ",
+      "\\n### ",
+      ".\\n\\n",
+      ".\\n",
+      "\\n",
+      ". ",
+      "."
+    ]
+  },
+  "collections_info": {
+    "prompt_contexts": "任務上下文與壞範例",
+    "prompt_examples": "優質 prompt 範例",
+    "expected_outputs": "期望輸出示例"
+  }
+}

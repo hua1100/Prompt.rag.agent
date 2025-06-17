@@ -4,8 +4,11 @@ from datetime import datetime
 import json
 import time
 
-# 首先需要安裝 Streamlit
-# !pip install streamlit plotly pandas
+# 初始化全局變數
+if 'rag_system' not in st.session_state:
+    st.session_state['rag_system'] = None
+if 'system_stats' not in st.session_state:
+    st.session_state['system_stats'] = None
 
 # 設定頁面配置
 st.set_page_config(
@@ -116,15 +119,27 @@ class StreamlitRAGInterface:
     def load_system(self):
         """載入 RAG 系統"""
         try:
-            # 這裡應該載入之前建立的系統
-            # 假設系統已經在全局變數中
-            if 'rag_system' in globals() and 'system_stats' in globals():
-                self.rag_system = globals()['rag_system']
-                self.system_stats = globals()['system_stats']
-                st.session_state.system_loaded = True
-                return True
-            else:
-                return False
+            # 創建新的 RAG 系統實例
+            rag_system = MockRAGSystem()
+            system_stats = {
+                "collections": {
+                    "general_prompts": 1250,
+                    "code_prompts": 820,
+                    "creative_writing": 550,
+                    "business_communication": 680
+                },
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            # 保存到 session state
+            st.session_state['rag_system'] = rag_system
+            st.session_state['system_stats'] = system_stats
+            
+            # 設置實例變數
+            self.rag_system = rag_system
+            self.system_stats = system_stats
+            st.session_state.system_loaded = True
+            return True
         except Exception as e:
             st.error(f"載入系統失敗：{str(e)}")
             return False
@@ -270,6 +285,12 @@ class StreamlitRAGInterface:
         """處理搜尋請求"""
         with st.spinner("🔍 搜尋中，請稍候..."):
             try:
+                if not self.rag_system:
+                    self.rag_system = st.session_state.get('rag_system')
+                    if not self.rag_system:
+                        st.error("系統未正確載入，請重新載入系統")
+                        return
+                
                 # 準備上下文
                 context = context_content.strip() if context_content else None
                 

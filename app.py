@@ -1,7 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime
 import json
 import time
@@ -640,28 +638,14 @@ class StreamlitRAGInterface:
             col1, col2 = st.columns(2)
 
             with col1:
-                # 創建餅圖
-                fig_pie = px.pie(
-                    df_stats,
-                    values='文檔數量',
-                    names='Collection',
-                    title="各 Collection 文檔數量佔比",
-                    color_discrete_sequence=px.colors.qualitative.Pastel
-                )
-                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                st.plotly_chart(fig_pie, use_container_width=True)
+                # 使用 Streamlit 原生图表显示文档数量占比
+                st.subheader("各 Collection 文檔數量佔比")
+                st.bar_chart(df_stats.set_index('Collection')['文檔數量'])
             
             with col2:
-                # 創建柱狀圖
-                fig_bar = px.bar(
-                    df_stats,
-                    x='Collection',
-                    y='文檔數量',
-                    title="各 Collection 文檔絕對數量",
-                    color='文檔數量',
-                    color_continuous_scale="Blues"
-                )
-                st.plotly_chart(fig_bar, use_container_width=True)
+                # 使用 Streamlit 原生图表显示文档绝对数量
+                st.subheader("各 Collection 文檔絕對數量")
+                st.bar_chart(df_stats.set_index('Collection')['文檔數量'])
         
         # 搜尋歷史分析
         if st.session_state.search_history:
@@ -676,12 +660,8 @@ class StreamlitRAGInterface:
             
             with col1:
                 if not scenario_counts.empty:
-                    fig_scenario = px.pie(
-                        values=scenario_counts.values,
-                        names=scenario_counts.index,
-                        title="搜尋場景分佈"
-                    )
-                    st.plotly_chart(fig_scenario, use_container_width=True)
+                    st.subheader("搜尋場景分佈")
+                    st.bar_chart(scenario_counts)
                 else:
                     st.info("尚無足夠的搜尋歷史來分析場景分佈。")
             
@@ -690,18 +670,12 @@ class StreamlitRAGInterface:
                 if not history_df.empty:
                     history_df['timestamp'] = pd.to_datetime(history_df['timestamp'])
                     hourly_counts = history_df.groupby(history_df['timestamp'].dt.hour).size().reset_index(name='count')
+                    hourly_counts.set_index('timestamp', inplace=True)
                     
-                    fig_time = px.line(
-                        hourly_counts,
-                        x='timestamp',
-                        y='count',
-                        title="每小時搜尋次數分佈",
-                        markers=True,
-                        labels={'timestamp': '小時 (24H)', 'count': '搜尋次數'}
-                    )
-                    st.plotly_chart(fig_time, use_container_width=True)
+                    st.subheader("每小時搜尋次數分佈")
+                    st.line_chart(hourly_counts)
                 else:
-                     st.info("尚無足夠的搜尋歷史來分析時間趨勢。")
+                    st.info("尚無足夠的搜尋歷史來分析時間趨勢。")
             
             # 詳細歷史
             st.markdown("### 📝 詳細搜尋歷史")

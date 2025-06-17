@@ -619,6 +619,13 @@ class StreamlitRAGInterface:
         """執行過濾搜尋"""
         with st.spinner("🔍 執行過濾搜尋中..."):
             try:
+                # 檢查系統狀態
+                if not self.rag_system:
+                    self.rag_system = st.session_state.get('rag_system')
+                    if not self.rag_system:
+                        st.error("系統未正確載入，請先在左側面板點擊「載入系統」按鈕")
+                        return
+                
                 # 構建過濾條件
                 filters = {}
                 if prompt_type != "全部":

@@ -42,55 +42,70 @@ st.markdown("""
     }
     
     .category-card {
-        background: #f8f9fa;
-        border: 1px solid #e9ecef;
+        background: #2d3748;
+        border: 1px solid #4a5568;
         border-radius: 8px;
         padding: 1rem;
         margin: 0.5rem 0;
         border-left: 4px solid #007bff;
+        color: #e2e8f0;
     }
     
     .prompt-preview {
-        background: #f1f3f4;
+        background: #1a202c;
         border-radius: 8px;
         padding: 1rem;
         margin: 0.5rem 0;
         border-left: 3px solid #28a745;
         font-family: 'Courier New', monospace;
         font-size: 0.9rem;
+        color: #e2e8f0;
     }
     
     .context-box {
-        background: #fff3cd;
-        border: 1px solid #ffeaa7;
+        background: #2d3748;
+        border: 1px solid #4a5568;
         border-radius: 8px;
         padding: 1rem;
         margin: 1rem 0;
+        color: #e2e8f0;
     }
     
     .success-box {
-        background: #d4edda;
-        border: 1px solid #c3e6cb;
+        background: #22543d;
+        border: 1px solid #276749;
         border-radius: 8px;
         padding: 1rem;
         margin: 1rem 0;
-        color: #155724;
+        color: #e2e8f0;
     }
     
     .warning-box {
-        background: #fff3cd;
-        border: 1px solid #ffeaa7;
+        background: #744210;
+        border: 1px solid #975a16;
         border-radius: 8px;
         padding: 1rem;
         margin: 1rem 0;
-        color: #856404;
+        color: #e2e8f0;
     }
     
     .sidebar-metric {
-        background: #e3f2fd;
+        background: #2d3748;
         padding: 0.5rem;
         border-radius: 5px;
         margin: 0.2rem 0;
+        color: #e2e8f0;
+    }
+    
+    /* 添加深色主題的文字顏色 */
+    .stMarkdown {
+        color: #e2e8f0;
+    }
+    
+    /* 確保展開器內的文字可見 */
+    .streamlit-expanderContent {
+        background-color: #1a202c;
+        color: #e2e8f0;
     }
 </style>
 """, unsafe_allow_html=True)
